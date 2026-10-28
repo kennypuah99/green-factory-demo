@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Factory Sustainability Agent</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>html,body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}img{max-width:100%}</style>
+<style>
+/* Layout: one narrow column for phones; agent loop strip, then trace, then results. Plant-floor signage feel. */
+:root{
+  --bg:#F2F4F1; --surface:#FFFFFF; --ink:#16201C; --muted:#5A6660; --line:#D5DBD6;
+  --accent:#0E6B4E; --accent-ink:#FFFFFF; --accent-soft:#DDEFE7;
+  --warn:#A85A06; --warn-soft:#FBEBD6; --crit:#B42318; --crit-soft:#FBE3E0;
+  --trace-bg:#14201B; --trace-ink:#CFE7DB; --trace-dim:#7F998C;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1412; --surface:#16201C; --ink:#E5ECE8; --muted:#9AA8A1; --line:#2A3631;
+  --accent:#3DBE8E; --accent-ink:#06130E; --accent-soft:#173A2E;
+  --warn:#F0A548; --warn-soft:#3A2A14; --crit:#F2695C; --crit-soft:#3D1D1A;
+  --trace-bg:#0A100E; --trace-ink:#CFE7DB; --trace-dim:#6F897C; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1412; --surface:#16201C; --ink:#E5ECE8; --muted:#9AA8A1; --line:#2A3631;
+  --accent:#3DBE8E; --accent-ink:#06130E; --accent-soft:#173A2E;
+  --warn:#F0A548; --warn-soft:#3A2A14; --crit:#F2695C; --crit-soft:#3D1D1A;
+  --trace-bg:#0A100E; --trace-ink:#CFE7DB; --trace-dim:#6F897C; color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5}
+.wrap{max-width:720px;margin:0 auto;padding-block:20px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:20px}
+h1,h2{font-family:var(--f-display);font-weight:700;letter-spacing:.01em;line-height:1.1;text-wrap:balance;margin:0}
+h1{font-size:2rem}
+h2{font-size:1.35rem}
+p{margin:0}
+.eyebrow{font-family:var(--f-display);font-weight:600;font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.lede{color:var(--muted);max-width:60ch}
+.muted{color:var(--muted)}
+.small{font-size:.875rem}
+.num{font-variant-numeric:tabular-nums}
+
+section{display:flex;flex-direction:column;gap:12px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
+
+label{font-weight:600;font-size:.9rem}
+select,input,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;width:100%;min-height:48px}
+textarea{font-family:var(--f-mono);font-size:.8rem;min-height:120px;resize:vertical}
+select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.field{display:flex;flex-direction:column;gap:6px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+details{border-top:1px solid var(--line);padding-top:12px}
+summary{cursor:pointer;font-weight:600;min-height:32px;display:flex;align-items:center}
+details[open] summary{margin-bottom:12px}
+
+button{font:inherit;cursor:pointer;border-radius:10px;min-height:48px;padding:12px 16px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:600;touch-action:manipulation}
+.run{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-family:var(--f-display);font-size:1.3rem;letter-spacing:.04em;text-transform:uppercase;min-height:60px;width:100%}
+.run:disabled{opacity:.6;cursor:progress}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+
+/* agent loop strip */
+.loop{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;list-style:none;margin:0;padding:0}
+.loop li{text-align:center;padding:10px 2px;border-radius:8px;background:var(--surface);border:1px solid var(--line);font-family:var(--f-display);font-weight:600;font-size:.95rem;letter-spacing:.03em;color:var(--muted);transition:background .25s,color .25s}
+.loop li small{display:block;font-family:var(--f-body);font-weight:500;font-size:.68rem;letter-spacing:0;line-height:1.2}
+.loop li.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.loop li.done{background:var(--accent-soft);color:var(--ink)}
+
+/* trace */
+.trace{background:var(--trace-bg);color:var(--trace-ink);font-family:var(--f-mono);font-size:.78rem;line-height:1.55;border-radius:10px;padding:14px;max-height:300px;overflow:auto;margin:0;white-space:pre-wrap;word-break:break-word}
+.trace .t{color:var(--trace-dim)}
+.trace .k{color:#7FD8B0;font-weight:600}
+.trace .w{color:#F3B566}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.kpi .l{font-size:.78rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.kpi .v{font-family:var(--f-display);font-weight:700;font-size:1.7rem;line-height:1.1}
+.kpi .h{font-size:.78rem;color:var(--muted)}
+.kpi.hero{grid-column:1/-1;background:var(--accent-soft);border-color:transparent}
+.kpi.hero .v{font-size:2.3rem;color:var(--accent)}
+
+/* machine cards */
+.machines{display:flex;flex-direction:column;gap:10px}
+.mc{background:var(--surface);border:1px solid var(--line);border-left-width:6px;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.mc.crit{border-left-color:var(--crit)}
+.mc.warn{border-left-color:var(--warn)}
+.mc.ok{border-left-color:var(--accent)}
+.mc-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.mc-name{font-weight:600}
+.mc-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:.85rem}
+.mc-stats b{display:block;font-family:var(--f-display);font-size:1.15rem}
+.mc-stats span{color:var(--muted);font-size:.75rem}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--muted)}
+.mc.crit .bar i{background:var(--crit)} .mc.warn .bar i{background:var(--warn)} .mc.ok .bar i{background:var(--accent)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:.72rem;font-weight:600;padding:3px 8px;border-radius:99px;background:var(--bg);border:1px solid var(--line)}
+.chip.crit{background:var(--crit-soft);color:var(--crit);border-color:transparent}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+
+/* actions */
+.actions{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;counter-reset:a}
+.actions li{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px 12px 52px;position:relative;counter-increment:a;display:flex;flex-direction:column;gap:4px}
+.actions li::before{content:counter(a);position:absolute;left:14px;top:12px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-family:var(--f-display);font-weight:700;display:grid;place-items:center}
+.actions .why{font-size:.85rem;color:var(--muted)}
+.actions .save{font-family:var(--f-display);font-weight:700;color:var(--accent)}
+.note{font-family:var(--f-mono);font-size:.75rem;background:var(--bg);border-radius:6px;padding:2px 6px}
+
+.report{min-height:260px;font-size:.78rem;background:var(--surface)}
+.toast{font-size:.85rem;color:var(--accent);font-weight:600;min-height:1.2em}
+
+.explain{font-size:.92rem;display:flex;flex-direction:column;gap:8px}
+.explain ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.compare{width:100%;border-collapse:collapse;font-size:.85rem}
+.compare th,.compare td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.compare th{font-family:var(--f-display);font-size:.95rem}
+.tablewrap{overflow-x:auto}
+footer{font-size:.8rem;color:var(--muted);text-align:center}
+
+@media (max-width:380px){.loop li{font-size:.8rem}.loop li small{display:none}.kpi .v{font-size:1.45rem}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:6px">
+    <span class="eyebrow">Penang Green Summit · Workshop demo</span>
+    <h1>Factory Sustainability Agent</h1>
+    <p class="lede">Watch an AI agent read factory data and operator notes, find energy and waste hotspots, estimate savings and write the report.</p>
+  </header>
+
+  <section aria-labelledby="s1">
+    <div class="panel">
+      <div class="field">
+        <label for="scenario">Factory data</label>
+        <select id="scenario">
+          <option value="energy">Scenario 1 · Energy hotspot</option>
+          <option value="scrap">Scenario 2 · Scrap &amp; waste</option>
+          <option value="downtime">Scenario 3 · Downtime &amp; quality</option>
+          <option value="custom">My own data (paste CSV)</option>
+        </select>
+      </div>
+      <div class="field" id="customBox" hidden>
+        <label for="csv">Paste CSV (same columns as the template)</label>
+        <textarea id="csv" spellcheck="false"></textarea>
+        <span class="small muted">Date, Line, Machine, Energy_kWh, Output_Units, Scrap_Units, Downtime_Min, Water_Liters, Notes</span>
+      </div>
+      <details>
+        <summary>Assumptions (tap to change)</summary>
+        <div class="grid2">
+          <div class="field"><label for="aKwh">Electricity RM/kWh</label><input id="aKwh" inputmode="decimal" value="0.50"></div>
+          <div class="field"><label for="aCo2">kg CO₂e per kWh</label><input id="aCo2" inputmode="decimal" value="0.65"></div>
+          <div class="field"><label for="aUnit">RM per good unit</label><input id="aUnit" inputmode="decimal" value="8.00"></div>
+          <div class="field"><label for="aDown">Downtime RM/min</label><input id="aDown" inputmode="decimal" value="30.00"></div>
+          <div class="field"><label for="aDays">Working days / year</label><input id="aDays" inputmode="numeric" value="300"></div>
+        </div>
+        <p class="small muted">Example values for teaching. Use your own tariff and grid emission factor for real decisions.</p>
+      </details>
+    </div>
+    <button class="run" id="runBtn" type="button">▶ Run the agent</button>
+  </section>
+
+  <section aria-labelledby="s2">
+    <h2 id="s2">What the agent is doing</h2>
+    <ol class="loop" id="loop">
+      <li data-step="0">Read<small>load data</small></li>
+      <li data-step="1">Analyse<small>calculate</small></li>
+      <li data-step="2">Decide<small>find hotspots</small></li>
+      <li data-step="3">Act<small>recommend</small></li>
+      <li data-step="4">Report<small>summarise</small></li>
+    </ol>
+    <pre class="trace" id="trace" aria-live="polite"></pre>
+  </section>
+
+  <section aria-labelledby="s3">
+    <h2 id="s3">Results</h2>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <section aria-labelledby="s4">
+    <h2 id="s4">Machine hotspots</h2>
+    <p class="small muted">Sorted by saving opportunity. The bar shows energy per unit compared with the worst machine.</p>
+    <div class="machines" id="machines"></div>
+  </section>
+
+  <section aria-labelledby="s5">
+    <h2 id="s5">Recommended actions</h2>
+    <ol class="actions" id="actions"></ol>
+  </section>
+
+  <section aria-labelledby="s6">
+    <h2 id="s6">Management report</h2>
+    <textarea class="report" id="report" readonly aria-label="Management report"></textarea>
+    <div class="row"><button type="button" id="copyBtn">Copy report</button><span class="toast" id="toast" role="status"></span></div>
+  </section>
+
+  <section aria-labelledby="s7">
+    <h2 id="s7">How this agent decides</h2>
+    <div class="panel explain">
+      <ul>
+        <li><b>Energy per unit</b> = Energy_kWh ÷ Output_Units. Flagged when 25% above the factory average.</li>
+        <li><b>Operator notes</b> that match a known problem raise a warning even when the numbers still look normal.</li>
+        <li><b>Scrap rate</b> = Scrap ÷ (Output + Scrap). Flagged above 4%.</li>
+        <li><b>Downtime</b> flagged when a machine has more than 1.5× the average downtime.</li>
+        <li><b>Notes</b> are scanned for keywords such as <span class="note">leak</span>, <span class="note">warm-up</span>, <span class="note">moisture</span>, <span class="note">feeder</span> to suggest a likely cause.</li>
+        <li><b>Savings</b>: 50% of extra energy above average, 25% of scrap value, 20% of downtime cost.</li>
+      </ul>
+      <p class="small muted">This demo uses fixed rules, so it runs offline on any phone. A real agent swaps the rules for an LLM and connects to live data.</p>
+      <div class="tablewrap">
+        <table class="compare">
+          <thead><tr><th>This demo</th><th>A real AI agent</th></tr></thead>
+          <tbody>
+            <tr><td>Sample CSV data</td><td>Live data from energy meters, MES, SCADA</td></tr>
+            <tr><td>Keyword rules on notes</td><td>LLM reads notes, logs and manuals</td></tr>
+            <tr><td>Runs when you tap</td><td>Runs every shift or when a meter spikes</td></tr>
+            <tr><td>Writes a report</td><td>Opens a work order, alerts the supervisor for approval</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer>Rule-based teaching demo · All figures are examples · No data leaves your phone</footer>
+</div>
+
+<script>
+var DATA={
+energy:{name:"Energy hotspot",csv:"Date,Line,Machine,Energy_kWh,Output_Units,Scrap_Units,Downtime_Min,Water_Liters,Notes\n2026-11-12,Line 1,Oven A,820,1200,35,20,500,Longer warm-up time\n2026-11-12,Line 2,Compressor B,650,900,20,10,300,Possible air leak\n2026-11-12,Line 3,Packaging C,260,1500,18,8,120,Normal operation\n2026-11-13,Line 1,Oven A,910,1100,60,35,540,Rework increased\n2026-11-13,Line 2,Compressor B,740,880,25,22,320,Pressure drop observed\n2026-11-13,Line 3,Packaging C,270,1480,16,5,118,Stable\n2026-11-14,Line 1,Oven A,870,1180,38,18,510,Preheat delay\n2026-11-14,Line 2,Compressor B,790,850,31,26,350,Suspected leakage\n2026-11-14,Line 4,CNC D,520,700,45,40,210,Tool change issue\n2026-11-15,Line 4,CNC D,540,680,52,44,225,High vibration noted"},
+scrap:{name:"Scrap & waste",csv:"Date,Line,Machine,Energy_kWh,Output_Units,Scrap_Units,Downtime_Min,Water_Liters,Notes\n2026-11-12,Line A,Injection Molder 1,430,1800,95,14,310,High flash defect after mold change\n2026-11-12,Line A,Injection Molder 2,410,1750,45,8,290,Normal\n2026-11-12,Line B,Assembly Cell 1,220,2100,32,12,140,Minor cosmetic rejects\n2026-11-13,Line A,Injection Molder 1,455,1700,130,22,340,Material moisture suspected\n2026-11-13,Line A,Injection Molder 2,418,1760,52,10,295,Stable\n2026-11-13,Line B,Assembly Cell 1,230,2050,48,18,145,Operator reported alignment issue\n2026-11-14,Line C,Paint Booth 1,690,900,88,30,510,Paint thickness variation\n2026-11-14,Line C,Paint Booth 2,670,930,40,16,500,Normal\n2026-11-15,Line C,Paint Booth 1,715,850,110,38,540,Rework and repaint increased\n2026-11-15,Line B,Assembly Cell 2,240,2200,25,9,150,Good run"},
+downtime:{name:"Downtime & quality",csv:"Date,Line,Machine,Energy_kWh,Output_Units,Scrap_Units,Downtime_Min,Water_Liters,Notes\n2026-11-12,SMT 1,Pick Place A,350,3200,20,15,80,Short feeder stop\n2026-11-12,SMT 1,Reflow Oven A,780,3100,18,10,200,Normal\n2026-11-12,SMT 2,AOI Station B,180,2900,35,45,60,False rejects and software restart\n2026-11-13,SMT 1,Pick Place A,370,3000,26,55,85,Feeder jam repeated\n2026-11-13,SMT 1,Reflow Oven A,800,3050,19,12,205,Stable\n2026-11-13,SMT 2,AOI Station B,190,2600,50,75,65,Camera calibration issue\n2026-11-14,SMT 3,Wave Solder C,620,1800,72,65,260,Temperature drift and bridge defects\n2026-11-14,SMT 3,Wave Solder C,640,1750,80,70,270,Flux setting reviewed\n2026-11-15,SMT 1,Pick Place A,390,2950,30,60,90,Feeder replacement pending\n2026-11-15,SMT 2,AOI Station B,185,2800,42,50,62,Inspection recipe adjusted"}
+};
+
+/* keyword -> likely cause and action */
+var RULES=[
+ {k:/leak|pressure drop/i,cause:"compressed air leak",act:"Run an ultrasonic leak survey and fix leaks; switch the compressor to pressure-based control."},
+ {k:/warm-?up|preheat/i,cause:"long warm-up / preheat",act:"Shorten warm-up with a start-up schedule and check oven insulation and door seals."},
+ {k:/rework|repaint/i,cause:"rework loop",act:"Track first-pass yield daily and stop the line for root cause when rework rises."},
+ {k:/mold change|mould change|flash/i,cause:"setup after mould change",act:"Use a setup checklist and first-piece inspection after every mould change."},
+ {k:/moisture/i,cause:"wet material",act:"Check resin dryer temperature and dew point before each shift."},
+ {k:/alignment/i,cause:"fixture misalignment",act:"Add a fixture alignment check at shift start."},
+ {k:/thickness/i,cause:"coating thickness variation",act:"Put film thickness on an SPC chart and lock spray settings."},
+ {k:/tool change|vibration/i,cause:"tool wear / spindle condition",act:"Start vibration monitoring and replace tools on a wear schedule."},
+ {k:/feeder|jam/i,cause:"feeder faults",act:"Set up feeder preventive maintenance and keep spare feeders ready."},
+ {k:/calibration|false reject|software restart|recipe/i,cause:"inspection set-up issues",act:"Recalibrate the camera and tune the inspection recipe to cut false rejects."},
+ {k:/temperature drift|bridge|flux/i,cause:"process temperature drift",act:"Profile solder temperature each shift and alarm on drift."}
+];
+
+var $=function(id){return document.getElementById(id)};
+var RM=function(v){return "RM "+Math.round(v).toLocaleString("en-MY")};
+var N=function(v,d){return Number(v).toLocaleString("en-MY",{minimumFractionDigits:d||0,maximumFractionDigits:d||0})};
+function num(id,def){var v=parseFloat(String($(id).value).replace(/,/g,""));return isFinite(v)&&v>=0?v:def}
+
+function parseCSV(text){
+  var lines=text.trim().split(/\r?\n/).filter(function(l){return l.trim()});
+  if(lines.length<2) throw new Error("Need a header row and at least one data row.");
+  var head=lines[0].split(",").map(function(h){return h.trim().toLowerCase()});
+  var idx=function(n){return head.indexOf(n.toLowerCase())};
+  var need=["Machine","Energy_kWh","Output_Units","Scrap_Units","Downtime_Min"];
+  need.forEach(function(n){if(idx(n)<0) throw new Error("Missing column: "+n)});
+  var nIdx=idx("Notes");
+  return lines.slice(1).map(function(l){
+    var c=l.split(",");
+    var g=function(n){var i=idx(n);return i<0?"":(c[i]||"").trim()};
+    var notes=nIdx<0?"":c.slice(nIdx).join(",").trim();
+    return {date:g("Date"),line:g("Line"),machine:g("Machine")||"Unknown",energy:+g("Energy_kWh")||0,output:+g("Output_Units")||0,scrap:+g("Scrap_Units")||0,down:+g("Downtime_Min")||0,water:+g("Water_Liters")||0,notes:notes};
+  });
+}
+
+function analyse(rows,a){
+  var m={},order=[];
+  rows.forEach(function(r){
+    if(!m[r.machine]){m[r.machine]={machine:r.machine,line:r.line,energy:0,output:0,scrap:0,down:0,water:0,notes:[]};order.push(r.machine)}
+    var x=m[r.machine];x.energy+=r.energy;x.output+=r.output;x.scrap+=r.scrap;x.down+=r.down;x.water+=r.water;if(r.notes)x.notes.push(r.notes);
+  });
+  var list=order.map(function(k){return m[k]});
+  var T={energy:0,output:0,scrap:0,down:0,water:0};
+  list.forEach(function(x){T.energy+=x.energy;T.output+=x.output;T.scrap+=x.scrap;T.down+=x.down;T.water+=x.water});
+  var avgEpu=T.output?T.energy/T.output:0;
+  var avgDown=T.down/list.length;
+  var dates={};rows.forEach(function(r){if(r.date)dates[r.date]=1});
+  var days=Math.max(1,Object.keys(dates).length);
+  list.forEach(function(x){
+    x.epu=x.output?x.energy/x.output:0;
+    x.sr=(x.output+x.scrap)?x.scrap/(x.output+x.scrap)*100:0;
+    x.sEnergy=Math.max(0,x.epu-avgEpu)*x.output*a.kwh*0.5;
+    x.kwhSaved=Math.max(0,x.epu-avgEpu)*x.output*0.5;
+    x.sScrap=x.scrap*a.unit*0.25;
+    x.sDown=x.down*a.down*0.20;
+    x.save=x.sEnergy+x.sScrap+x.sDown;
+    x.flags=[];
+    if(avgEpu&&x.epu>avgEpu*1.25)x.flags.push({t:"Energy hotspot",s:"crit"});
+    if(x.sr>4)x.flags.push({t:"High scrap "+x.sr.toFixed(1)+"%",s:x.sr>6?"crit":"warn"});
+    if(x.down>avgDown*1.5)x.flags.push({t:"High downtime",s:"warn"});
+    x.causes=[];
+    RULES.forEach(function(rule){
+      var hits=x.notes.filter(function(n){return rule.k.test(n)});
+      if(hits.length)x.causes.push({cause:rule.cause,act:rule.act,hits:hits});
+    });
+    if(!x.flags.length&&x.causes.length)x.flags.push({t:"Warning in notes",s:"warn"});
+    x.level=x.flags.some(function(f){return f.s==="crit"})?"crit":(x.flags.length?"warn":"ok");
+  });
+  list.sort(function(p,q){return q.save-p.save});
+  var save=list.reduce(function(s,x){return s+x.save},0);
+  var kwhSaved=list.reduce(function(s,x){return s+x.kwhSaved},0);
+  var yearF=a.days/days;
+  return {list:list,T:T,avgEpu:avgEpu,days:days,records:rows.length,save:save,saveYr:save*yearF,co2:T.energy*a.co2,co2SavedYr:kwhSaved*a.co2*yearF/1000,sr:(T.output+T.scrap)?T.scrap/(T.output+T.scrap)*100:0,yearF:yearF};
+}
+
+function actionsFrom(R){
+  var acts=[];
+  R.list.forEach(function(x){
+    if(!x.flags.length)return;
+    if(x.causes.length){
+      x.causes.slice(0,2).forEach(function(c){
+        acts.push({m:x,title:x.machine+": "+c.act,why:"Notes mention “"+c.hits[0]+"” → likely "+c.cause+".",save:x.save/Math.min(2,x.causes.length)});
+      });
+    }else{
+      var f=x.flags[0].t;
+      var act=/Energy/.test(f)?"Check idle running, settings and standby mode.":/scrap/i.test(f)?"Run a root-cause review on the top defect.":"Turn downtime records into a preventive maintenance plan.";
+      acts.push({m:x,title:x.machine+": "+act,why:f+" (no clear cause in notes).",save:x.save});
+    }
+  });
+  acts.sort(function(p,q){return q.save-p.save});
+  return acts.slice(0,4);
+}
+
+function render(R,acts,name){
+  var f=R.yearF;
+  $("kpis").innerHTML=
+   '<div class="kpi hero"><span class="l">Estimated saving per year</span><span class="v num">'+RM(R.saveYr)+'</span><span class="h">'+RM(R.save)+' in this '+R.days+'-day data, scaled to '+N(num("aDays",300))+' working days</span></div>'+
+   '<div class="kpi"><span class="l">Energy used</span><span class="v num">'+N(R.T.energy)+'</span><span class="h">kWh · '+N(R.avgEpu,3)+' kWh/unit</span></div>'+
+   '<div class="kpi"><span class="l">Carbon</span><span class="v num">'+N(R.co2)+'</span><span class="h">kg CO₂e in data period</span></div>'+
+   '<div class="kpi"><span class="l">Scrap rate</span><span class="v num">'+R.sr.toFixed(1)+'%</span><span class="h">'+N(R.T.scrap)+' units scrapped</span></div>'+
+   '<div class="kpi"><span class="l">Downtime</span><span class="v num">'+N(R.T.down)+'</span><span class="h">minutes · '+RM(R.T.down*num("aDown",30))+' lost</span></div>';
+  var maxE=Math.max.apply(null,R.list.map(function(x){return x.epu}))||1;
+  $("machines").innerHTML=R.list.map(function(x){
+    var chips=x.flags.map(function(fl){return '<span class="chip '+fl.s+'">'+fl.t+'</span>'}).join("")||'<span class="chip">On target</span>';
+    var cause=x.causes.length?'<p class="small"><b>Likely cause:</b> '+x.causes.map(function(c){return c.cause}).join(", ")+'</p>':'';
+    return '<div class="mc '+x.level+'"><div class="mc-top"><span class="mc-name">'+esc(x.machine)+' <span class="muted small">'+esc(x.line)+'</span></span><span class="num" style="font-weight:600;color:var(--accent)">'+RM(x.save*f)+'/yr</span></div>'+
+     '<div class="mc-stats"><div><b class="num">'+x.epu.toFixed(3)+'</b><span>kWh / unit</span></div><div><b class="num">'+x.sr.toFixed(1)+'%</b><span>scrap</span></div><div><b class="num">'+N(x.down)+'</b><span>min down</span></div></div>'+
+     '<div class="bar" aria-hidden="true"><i style="width:'+(x.epu/maxE*100).toFixed(0)+'%"></i></div><div class="chips">'+chips+'</div>'+cause+'</div>';
+  }).join("");
+  $("actions").innerHTML=acts.length?acts.map(function(c){
+    return '<li><b>'+esc(c.title)+'</b><span class="why">'+esc(c.why)+'</span><span class="save num">≈ '+RM(c.save*f)+' / year</span></li>';
+  }).join(""):'<li><b>No hotspots found.</b><span class="why">All machines are within the thresholds.</span></li>';
+  var top=R.list[0]||{};
+  var rep=[
+   "FACTORY SUSTAINABILITY SUMMARY",
+   "Prepared by: AI agent (rule-based demo)",
+   "Data: "+name+" · "+R.records+" records · "+R.list.length+" machines · "+R.days+" days","",
+   "KEY FIGURES (data period)",
+   "- Energy: "+N(R.T.energy)+" kWh ("+N(R.avgEpu,3)+" kWh/unit)",
+   "- Carbon: "+N(R.co2)+" kg CO2e",
+   "- Scrap rate: "+R.sr.toFixed(1)+"% ("+N(R.T.scrap)+" units)",
+   "- Downtime: "+N(R.T.down)+" min","",
+   "OPPORTUNITY",
+   "- Estimated saving: "+RM(R.save)+" in data period, about "+RM(R.saveYr)+" per year",
+   "- Carbon avoided from energy savings: about "+N(R.co2SavedYr,1)+" t CO2e per year",
+   "- Biggest opportunity: "+(top.machine||"-")+" ("+RM((top.save||0)*f)+"/yr)","",
+   "RECOMMENDED ACTIONS"
+  ].concat(acts.map(function(c,i){return (i+1)+". "+c.title+"\n   Reason: "+c.why})).concat(["",
+   "NEXT STEP",
+   "Assign an owner to each action and track kWh/unit, scrap rate and downtime weekly.",
+   "Assumptions: RM"+num("aKwh",.5)+"/kWh, "+num("aCo2",.65)+" kg CO2e/kWh, RM"+num("aUnit",8)+"/unit, RM"+num("aDown",30)+"/min downtime."]);
+  $("report").value=rep.join("\n");
+}
+
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+
+function trace(lines){$("trace").innerHTML=lines.join("\n");$("trace").scrollTop=$("trace").scrollHeight}
+function setStep(i){
+  var li=document.querySelectorAll("#loop li");
+  for(var j=0;j<li.length;j++){li[j].className=j<i?"done":(j===i?"on":"")}
+}
+
+function buildTrace(R,acts,name){
+  var hs=R.list.filter(function(x){return x.flags.length});
+  var notesHits=[];R.list.forEach(function(x){x.causes.forEach(function(c){notesHits.push('  <span class="w">“'+esc(c.hits[0])+'”</span> → '+esc(x.machine)+': '+esc(c.cause))})});
+  return [
+   ['<span class="t">// goal: find energy & waste hotspots, estimate savings</span>','<span class="k">read_data</span>("'+esc(name)+'")','  ✓ '+R.records+' records, '+R.list.length+' machines, '+R.days+' days'],
+   ['<span class="k">calculate</span>(energy_per_unit, scrap_rate, downtime)','  factory avg: '+R.avgEpu.toFixed(3)+' kWh/unit · scrap '+R.sr.toFixed(1)+'%'].concat(R.list.map(function(x){return '  '+esc(x.machine)+': '+x.epu.toFixed(3)+' kWh/u · '+x.sr.toFixed(1)+'% · '+x.down+' min'})),
+   ['<span class="k">find_hotspots</span>(rules)'].concat(hs.length?hs.map(function(x){return '  <span class="w">⚑</span> '+esc(x.machine)+': '+x.flags.map(function(f){return f.t}).join(", ")}):['  no machine over threshold']).concat(['<span class="k">read_notes</span>(operator logs)']).concat(notesHits.length?notesHits:['  no matching keywords']),
+   ['<span class="k">estimate_savings</span>()','  '+RM(R.save)+' in data → '+RM(R.saveYr)+' / year','<span class="k">recommend</span>(top '+acts.length+' actions by RM)'].concat(acts.map(function(c,i){return '  '+(i+1)+'. '+esc(c.m.machine)+' ≈ '+RM(c.save*R.yearF)+'/yr'})),
+   ['<span class="k">write_report</span>()','  ✓ management summary ready','<span class="t">// done · a human approves before any action</span>']
+  ];
+}
+
+var running=false;
+function getRows(){
+  var key=$("scenario").value;
+  var text=key==="custom"?$("csv").value:DATA[key].csv;
+  return {rows:parseCSV(text),name:key==="custom"?"My own data":DATA[key].name};
+}
+function assumptions(){return {kwh:num("aKwh",.5),co2:num("aCo2",.65),unit:num("aUnit",8),down:num("aDown",30),days:num("aDays",300)}}
+
+function runInstant(){
+  try{
+    var g=getRows(),R=analyse(g.rows,assumptions()),acts=actionsFrom(R);
+    render(R,acts,g.name);
+    var t=buildTrace(R,acts,g.name);trace([].concat.apply([],t));setStep(5);
+  }catch(e){trace(['<span class="w">! '+esc(e.message)+'</span>'])}
+}
+
+function runAnimated(){
+  if(running)return;
+  var g,R,acts;
+  try{g=getRows();R=analyse(g.rows,assumptions());acts=actionsFrom(R)}catch(e){trace(['<span class="w">! '+esc(e.message)+'</span>']);return}
+  running=true;$("runBtn").disabled=true;$("runBtn").textContent="Agent working…";
+  var reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var steps=buildTrace(R,acts,g.name),shown=[],i=0,gap=reduce?60:900;
+  ["kpis","machines","actions"].forEach(function(id){$(id).style.opacity=.35});
+  $("report").value="";
+  (function next(){
+    if(i>=steps.length){
+      render(R,acts,g.name);setStep(5);
+      ["kpis","machines","actions"].forEach(function(id){$(id).style.opacity=1});
+      running=false;$("runBtn").disabled=false;$("runBtn").textContent="▶ Run the agent again";
+      $("kpis").scrollIntoView({behavior:reduce?"auto":"smooth",block:"start"});
+      return;
+    }
+    setStep(i);shown=shown.concat(steps[i]);trace(shown);i++;
+    setTimeout(next,gap);
+  })();
+}
+
+$("scenario").addEventListener("change",function(){
+  var c=this.value==="custom";$("customBox").hidden=!c;
+  if(c&&!$("csv").value)$("csv").value=DATA.energy.csv;
+  runInstant();
+});
+["aKwh","aCo2","aUnit","aDown","aDays"].forEach(function(id){$(id).addEventListener("input",runInstant)});
+$("csv").addEventListener("input",runInstant);
+$("runBtn").addEventListener("click",runAnimated);
+$("copyBtn").addEventListener("click",function(){
+  var t=$("report");
+  var ok=function(){$("toast").textContent="Copied";setTimeout(function(){$("toast").textContent=""},2000)};
+  var fallback=function(){t.removeAttribute("readonly");t.select();try{document.execCommand("copy");ok()}catch(e){$("toast").textContent="Select the text and copy"}t.setAttribute("readonly","")};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t.value).then(ok,fallback)}else fallback();
+});
+runInstant();
+</script>
+</body>
+</html>
